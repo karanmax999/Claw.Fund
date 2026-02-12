@@ -5,7 +5,8 @@ import { fetchTokens } from "../indexer/tokenIndexer";
 import { DecisionEngine } from "../engine/decisionEngine";
 import { MomentumStrategy } from "../strategies/momentumStrategy";
 import { executeTrade } from "../execution/executionEngine";
-import { startWsServer, broadcast, WsEventType } from "../ws/wsServer";
+import { broadcast, WsEventType } from "../ws/wsServer";
+import { saveDecision, saveExecution } from "../db/database";
 import {
   ReasoningEntry, PortfolioState, TradeAction,
   TradeDecision, TradeExecution,
@@ -18,9 +19,6 @@ import {
 export async function startAgentLoop(): Promise<void> {
   const strategy = new MomentumStrategy();
   const engine = new DecisionEngine([strategy]);
-
-  // Start WebSocket server for real-time frontend updates
-  startWsServer(8080);
 
   // In-memory portfolio state — persists across ticks
   const portfolioState: PortfolioState = {
@@ -49,19 +47,23 @@ export async function startAgentLoop(): Promise<void> {
       const decisions = engine.evaluate(marketData, portfolioState);
       log.info(`Produced ${decisions.length} decisions`);
 
-      // Broadcast DECISION events
-      for (const d of decisions) {
-        broadcast({
-          type: WsEventType.DECISION,
-          runId,
+      // Broadcast DECISION event
+      broadcast({
+        type: WsEventType.DECISION,
+        decisions: decisions.map((d) => ({
           token: d.token.symbol,
           action: d.action,
           confidence: d.confidence,
           momentumScore: d.momentumScore,
           allocation: d.suggestedSize,
           reason: d.reason,
-          timestamp: Date.now(),
-        });
+        })),
+        timestamp: Date.now(),
+      });
+
+      // Persist decisions to SQLite
+      for (const d of decisions) {
+        saveDecision(d);
       }
 
       // 3. EXECUTE — send actionable decisions through the execution engine
@@ -111,6 +113,9 @@ export async function startAgentLoop(): Promise<void> {
             txHash: result.txHash ?? null,
             timestamp: Date.now(),
           });
+
+          // Persist execution to SQLite
+          saveExecution(execution);
         }
       }
 
@@ -131,10 +136,11 @@ export async function startAgentLoop(): Promise<void> {
       // Broadcast PORTFOLIO_UPDATE event
       broadcast({
         type: WsEventType.PORTFOLIO_UPDATE,
-        runId,
-        totalExposure: portfolioState.totalExposure,
-        positions: activePositions.length,
-        allocations: { ...portfolioState.allocations },
+        portfolioState: {
+          totalExposure: portfolioState.totalExposure,
+          allocations: { ...portfolioState.allocations },
+          positions: activePositions.length,
+        },
         timestamp: Date.now(),
       });
 

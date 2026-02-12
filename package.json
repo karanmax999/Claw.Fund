@@ -9,14 +9,20 @@
     "dev": "ts-node src/index.ts",
     "clean": "rimraf dist"
   },
-  "keywords": ["trading", "agent", "autonomous"],
+  "keywords": [
+    "trading",
+    "agent",
+    "autonomous"
+  ],
   "license": "MIT",
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "dotenv": "^16.4.5",
     "uuid": "^9.0.1",
     "ws": "^8.16.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.11.16",
     "@types/uuid": "^9.0.8",
     "@types/ws": "^8.5.10",
