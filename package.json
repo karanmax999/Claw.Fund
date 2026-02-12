@@ -1,0 +1,27 @@
+{
+  "name": "claw-fund-agent",
+  "version": "0.1.0",
+  "description": "Autonomous trading agent for Claw.Fund",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "clean": "rimraf dist"
+  },
+  "keywords": ["trading", "agent", "autonomous"],
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "uuid": "^9.0.1",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "@types/uuid": "^9.0.8",
+    "@types/ws": "^8.5.10",
+    "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
