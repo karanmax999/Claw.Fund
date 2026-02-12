@@ -1,0 +1,29 @@
+{
+  "network": "monadTestnet",
+  "deployer": "0x356435901c4bF97E2f695a4377087670201e5588",
+  "agent": "0x356435901c4bF97E2f695a4377087670201e5588",
+  "timestamp": "2026-02-12T11:31:24.353Z",
+  "contracts": {
+    "CLAWToken": {
+      "address": "0x3E53Bf5E22451497a9805703FC7fDcC8e527d5FD",
+      "initialSupply": "1000000 (1000000e18 wei)"
+    },
+    "AgentTreasury": {
+      "address": "0xA32CB983689376b8FED765727067069084d1fbb6",
+      "maxAllocationBps": 2000
+    },
+    "Governance": {
+      "address": "0x6726a4A8B149F59Db599FEBF450F279e82951560",
+      "votingPeriod": 7200,
+      "minProposalTokens": "100000000000000000000"
+    },
+    "ProfitDistributor": {
+      "address": "0x4256b955d4Bf234e484c9A6145F901833881c9e2",
+      "profitThreshold": "1000000000000000000",
+      "distributionBps": 5000
+    },
+    "QuestManager": {
+      "address": "0x061638608f8CBe21D81d4C95E5208FCC4fa8D74f"
+    }
+  }
+}

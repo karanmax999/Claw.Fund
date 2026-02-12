@@ -1,8 +1,32 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+cache/
+artifacts/
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Logs
 logs/
 *.log
+
+# SQLite databases
 *.db
 *.db-shm
 *.db-wal
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Hardhat
+typechain-types/

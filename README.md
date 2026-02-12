@@ -1,213 +1,278 @@
-# 🦀 Claw.Fund
+# CLAW.FUND
 
-**Autonomous Trading Agent** — AI-powered token trading with real-time momentum scoring, deterministic risk management, and WebSocket broadcasting.
-
-Claw.Fund is a modular, production-grade TypeScript backend that monitors token markets, scores momentum signals, gates trades through a risk engine, executes via a dedicated execution layer, and streams every decision to connected frontends in real time.
+**AI-Powered Autonomous Trading Fund on Monad** — treasury custody, token mechanics, governance, profit distribution, quest gamification, and a real-time autonomous trading agent backend.
 
 ---
 
-## 🏗 Project Structure
+## Overview
+
+Claw.Fund is a fully on-chain autonomous trading fund where an AI agent manages a treasury, executes trades, and distributes profits to $CLAW token holders. The system combines:
+
+- **5 Solidity smart contracts** deployed on Monad testnet — handling custody, governance, profit sharing, and gamified quests
+- **Autonomous trading agent backend** — TypeScript service with momentum scoring, risk gating, and real-time WebSocket broadcasting
+
+---
+
+## Repository Structure
 
 ```
-claw-fund/
-├── src/
-│   ├── index.ts                  # Entrypoint — boots WS server + agent loop
-│   ├── config.ts                 # Env loader & constants (DRY_RUN, RISK_CONFIG)
-│   ├── agent/
-│   │   └── agentLoop.ts          # Core loop: monitor → think → risk → execute → broadcast → log
-│   ├── indexer/
-│   │   └── tokenIndexer.ts       # Rolling-window market data fetcher (in-memory cache)
-│   ├── strategies/
-│   │   └── momentumStrategy.ts   # Quantitative momentum scoring (price, volume, liquidity)
-│   ├── engine/
-│   │   └── decisionEngine.ts     # Strategy orchestration + risk gating
-│   ├── risk/
-│   │   └── riskEngine.ts         # Deterministic risk rules (allocation, exposure, liquidity, cooldown)
-│   ├── execution/
-│   │   └── executionEngine.ts    # Trade execution abstraction (mock V1)
-│   ├── ws/
-│   │   └── wsServer.ts           # WebSocket server for real-time frontend updates
-│   ├── db/
-│   │   └── database.ts           # SQLite persistent storage (decisions + executions)
-│   ├── wallet/
-│   │   └── signer.ts             # Mock wallet signer
-│   ├── logger/
-│   │   └── reasoningLogger.ts    # Centralized logger + JSON reasoning persistence
-│   └── types/
-│       └── index.ts              # Shared TypeScript interfaces
-├── scripts/
-│   └── sendUSDC.js               # USDC transfer utility (Base network)
-├── package.json
-├── tsconfig.json
-├── .env.example
-└── .gitignore
+Claw.Fund/
+├── contracts/              # Solidity smart contracts (Hardhat)
+│   ├── src/                # 5 Solidity contracts
+│   │   ├── CLAWToken.sol
+│   │   ├── AgentTreasury.sol
+│   │   ├── Governance.sol
+│   │   ├── ProfitDistributor.sol
+│   │   └── QuestManager.sol
+│   ├── test/               # Unit tests (94/94 passing)
+│   ├── scripts/
+│   │   ├── deploy.js       # Production deploy script
+│   │   └── e2e/            # Live on-chain e2e tests (73/73 passing)
+│   ├── abi/                # Exported ABIs for frontend/backend
+│   ├── deployments/        # Deployment addresses + metadata
+│   └── hardhat.config.js   # Monad testnet + verification config
+│
+├── backend/                # Autonomous trading agent (TypeScript)
+│   ├── src/
+│   │   ├── agent/          # Core agent loop
+│   │   ├── indexer/        # Rolling-window market data
+│   │   ├── strategies/     # Momentum scoring strategy
+│   │   ├── engine/         # Decision orchestration
+│   │   ├── risk/           # Deterministic risk gate
+│   │   ├── execution/      # Trade execution layer
+│   │   ├── ws/             # WebSocket server
+│   │   ├── db/             # SQLite persistence
+│   │   └── logger/         # Reasoning logger
+│   └── package.json
+│
+└── README.md               # This file
 ```
 
 ---
 
-## ⚙️ How It Works
+## Deployed Contracts (Monad Testnet — Chain 10143)
+
+| Contract | Address | Explorer |
+|---|---|---|
+| **CLAWToken** | `0x3E53Bf5E22451497a9805703FC7fDcC8e527d5FD` | [View](https://testnet.monadscan.com/address/0x3E53Bf5E22451497a9805703FC7fDcC8e527d5FD) |
+| **AgentTreasury** | `0xA32CB983689376b8FED765727067069084d1fbb6` | [View](https://testnet.monadscan.com/address/0xA32CB983689376b8FED765727067069084d1fbb6) |
+| **Governance** | `0x6726a4A8B149F59Db599FEBF450F279e82951560` | [View](https://testnet.monadscan.com/address/0x6726a4A8B149F59Db599FEBF450F279e82951560) |
+| **ProfitDistributor** | `0x4256b955d4Bf234e484c9A6145F901833881c9e2` | [View](https://testnet.monadscan.com/address/0x4256b955d4Bf234e484c9A6145F901833881c9e2) |
+| **QuestManager** | `0x061638608f8CBe21D81d4C95E5208FCC4fa8D74f` | [View](https://testnet.monadscan.com/address/0x061638608f8CBe21D81d4C95E5208FCC4fa8D74f) |
+
+**Deployer / Agent:** `0x356435901c4bF97E2f695a4377087670201e5588`
+
+---
+
+## How the 5 Contracts Connect
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────┐     ┌──────────────────┐
-│  Token       │────▶│  Momentum        │────▶│  Risk       │────▶│  Execution       │
-│  Indexer     │     │  Strategy        │     │  Engine     │     │  Engine          │
-│  (rolling    │     │  (score 0–100)   │     │  (4 rules)  │     │  (mock/live)     │
-│   windows)   │     │                  │     │             │     │                  │
-└─────────────┘     └──────────────────┘     └─────────────┘     └──────────────────┘
-                                                                          │
-                                              ┌───────────────────────────┤
-                                              ▼                           ▼
-                                        ┌───────────┐             ┌─────────────┐
-                                        │  SQLite   │             │  WebSocket  │
-                                        │  Storage  │             │  Broadcast  │
-                                        └───────────┘             └─────────────┘
+                    ┌──────────────────┐
+                    │    CLAWToken      │  ERC20 (1M supply)
+                    │  (fixed supply)   │  burn, permit
+                    └────────┬─────────┘
+                             │ balanceOf checks
+          ┌──────────────────┼──────────────────┐
+          ▼                  ▼                   ▼
+┌─────────────────┐ ┌───────────────┐ ┌──────────────────┐
+│  Governance      │ │ ProfitDist    │ │  QuestManager    │
+│  (propose/vote)  │ │ (sync/dist)   │ │  (create/claim)  │
+└────────┬────────┘ └───────┬───────┘ └──────────────────┘
+         │ governance role   │ reads treasury value
+         ▼                   ▼
+┌──────────────────────────────────────┐
+│          AgentTreasury               │
+│  (holds MON + ERC20, executes trades)│
+└──────────────────────────────────────┘
 ```
 
-Each tick of the agent loop:
+**Roles:**
+
+- **Agent** (deployer wallet) → executes trades, syncs values, creates quests, attests users
+- **Governance** (Governance contract for Treasury; deployer for ProfitDist/QuestMgr) → pause/unpause, update risk params, whitelist tokens
+
+---
+
+## Smart Contracts
+
+### CLAWToken
+
+ERC-20 token with fixed 1M supply, burn, and EIP-2612 permit.
+
+- `transfer`, `approve`, `transferFrom` — standard ERC-20
+- `burn(amount)` — permanently destroy tokens, reduces totalSupply
+- Permit support for gasless approvals
+
+### AgentTreasury
+
+Central vault holding native MON + ERC-20 tokens. Agent trades, governance controls risk.
+
+- **Fund treasury** — send MON directly to contract
+- **Whitelist tokens** — `setTokenAllowed(token, true)` (governance only)
+- **Execute trades** — `executeTrade(token, amount, isBuy)` (agent only)
+- **Risk check** — auto-reverts if allocation > `maxAllocationBps` (20%)
+- **Pause/Unpause** — all trades blocked when paused
+
+### Governance
+
+Token-weighted proposal voting for CLAW holders.
+
+- **Create proposal** — requires >= 100 CLAW
+- **Vote** — weight = caller's CLAW balance at vote time
+- **Execute** — after voting period ends + majority FOR votes
+- Voting period: 7200 blocks (~1 day)
+
+### ProfitDistributor
+
+Distributes treasury profits to CLAW holders when threshold is met.
+
+- **Sync treasury value** — agent reports latest value
+- **Auto-detect profit** — triggers distribution when profit >= threshold
+- **Batch distribute** — sends MON rewards to holders
+- Profit threshold: 1 MON, distribution: 50% of profit
+
+### QuestManager
+
+Gamified quest system with 3 quest types:
+
+| Type | Verification |
+|---|---|
+| **HoldTokens** | On-chain: checks `clawToken.balanceOf(user) >= threshold` |
+| **ProvideLiquidity** | Off-chain: agent calls `attestQuest(questId, user)` |
+| **ParticipateVote** | Off-chain: agent calls `attestQuest(questId, user)` |
+
+---
+
+## Trading Agent Backend
+
+The autonomous trading agent runs a continuous loop:
 
 1. **MONITOR** — Fetch rolling-window market data (price, volume, liquidity)
-2. **THINK** — Score each token via momentum strategy (weighted: price 40%, volume 30%, liquidity 30%)
+2. **THINK** — Score each token via momentum strategy (price 40%, volume 30%, liquidity 30%)
 3. **RISK GATE** — Check allocation cap, exposure cap, liquidity floor, cooldown timer
 4. **EXECUTE** — Send actionable trades through the execution engine
-5. **BROADCAST** — Stream `DECISION`, `TRADE_EXECUTED`, `PORTFOLIO_UPDATE` events via WebSocket
+5. **BROADCAST** — Stream events via WebSocket (`ws://localhost:8080`)
 6. **PERSIST** — Save decisions and executions to SQLite + JSON reasoning logs
+
+### Risk Rules
+
+| Rule | Threshold |
+|---|---|
+| Per-token allocation cap | 15% of portfolio |
+| Total exposure cap | 60% of portfolio |
+| Minimum liquidity floor | $100,000 USD |
+| Per-token cooldown | 5 minutes |
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
 - **Node.js** 18+
 - **npm** 9+
 
-### Setup
+### Contracts
 
 ```bash
-# Clone
-git clone https://github.com/karanmax999/Claw.Fund.git
-cd Claw.Fund
-
-# Install dependencies
+cd contracts
 npm install
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your settings
+# Compile
+npx hardhat compile
 
-# Run in development mode
+# Run unit tests (94 tests)
+npx hardhat test
+
+# Deploy to Monad testnet
+cp .env.example .env    # add PRIVATE_KEY, RPC, AGENT_ADDRESS
+npx hardhat run scripts/deploy.js --network monadTestnet
+
+# Run live e2e tests on Monad testnet (73 tests)
+npx hardhat run scripts/e2e/run_all.js --network monadTestnet
+```
+
+### Backend
+
+```bash
+cd backend
+npm install
+cp .env.example .env    # configure settings
+
+# Development
 npm run dev
-```
 
-### Build & Run
-
-```bash
-npm run build    # Compile TypeScript
-npm start        # Run compiled JS
+# Production
+npm run build
+npm start
 ```
 
 ---
 
-## 🔧 Configuration
+## Test Results
 
-All configuration is via environment variables (`.env`):
-
-| Variable | Default | Description |
+| Suite | Count | Status |
 |---|---|---|
-| `DRY_RUN` | `true` | Prevents real trades when `true` |
-| `POLL_INTERVAL_MS` | `10000` | Agent loop interval (ms) |
-| `MOMENTUM_THRESHOLD` | `5.0` | Minimum momentum score delta |
-| `POSITION_SIZE` | `0.1` | Default position size (fraction) |
-| `LOG_LEVEL` | `debug` | Logging verbosity |
-| `LOG_DIR` | `./logs` | Directory for reasoning logs |
+| Unit tests (Hardhat local) | 94/94 | All passing |
+| E2E on-chain (Monad testnet) | 73/73 | All passing |
+| **Total** | **167 tests** | **All passing** |
 
-### Risk Parameters (hardcoded in `config.ts`)
+---
 
-| Parameter | Value | Description |
+## Security
+
+- **ReentrancyGuard** on Treasury, ProfitDistributor, QuestManager, Governance
+- **Pausable** on Treasury, ProfitDistributor, QuestManager
+- **onlyAgent** / **onlyGovernance** modifiers enforce strict access control
+- **Max allocation risk check** prevents over-concentration in a single asset
+- **SafeERC20** for all token transfers
+- **Zero-address checks** on all constructors
+- **No delegatecall** — no arbitrary code execution
+- **No upgradeability** — immutable V1 for maximum trust
+- **Events emitted** on every state change for full transparency
+
+---
+
+## Configuration Defaults
+
+| Parameter | Default | Description |
 |---|---|---|
-| `maxAllocationPerToken` | 15% | Max portfolio fraction per token |
-| `maxTotalExposure` | 60% | Max total portfolio exposure |
-| `minLiquidityUsd` | $100,000 | Minimum liquidity to trade |
-| `cooldownMinutes` | 5 min | Cooldown between trades on same token |
+| Initial CLAW supply | 1,000,000 | Fixed supply minted to deployer |
+| Max allocation per asset | 2000 bps (20%) | Agent trade limit |
+| Voting period | 7200 blocks (~1 day) | Governance proposal duration |
+| Min proposal tokens | 100 CLAW | Required to create proposal |
+| Profit threshold | 1 MON | Minimum profit to trigger distribution |
+| Distribution percentage | 5000 bps (50%) | Profit share to holders |
 
 ---
 
-## 📡 WebSocket API
+## Key Events (for frontend integration)
 
-Connect to `ws://localhost:8080` to receive real-time JSON events:
-
-### Event: `DECISION`
-```json
-{
-  "type": "DECISION",
-  "decisions": [
-    {
-      "token": "ALPHA",
-      "action": "BUY",
-      "confidence": 0.85,
-      "momentumScore": 78.3,
-      "allocation": 0.12,
-      "reason": "priceΔ5m=8.2% | volSpike=1.5x | liqΔ=3.1%"
-    }
-  ],
-  "timestamp": 1707123456789
-}
-```
-
-### Event: `TRADE_EXECUTED`
-```json
-{
-  "type": "TRADE_EXECUTED",
-  "token": "ALPHA",
-  "action": "BUY",
-  "allocation": 0.12,
-  "confidence": 0.85,
-  "momentumScore": 78.3,
-  "txHash": "0xabc123...",
-  "timestamp": 1707123456800
-}
-```
-
-### Event: `PORTFOLIO_UPDATE`
-```json
-{
-  "type": "PORTFOLIO_UPDATE",
-  "portfolioState": {
-    "totalExposure": 0.12,
-    "allocations": { "0xTokenAddr": 0.12 },
-    "positions": 1
-  },
-  "timestamp": 1707123456810
-}
-```
+| Event | Contract |
+|---|---|
+| `TradeExecuted` | AgentTreasury |
+| `RiskUpdated` | AgentTreasury |
+| `ProposalCreated` | Governance |
+| `VoteCast` | Governance |
+| `ProposalExecuted` | Governance |
+| `ProfitDistributed` | ProfitDistributor |
+| `RewardClaimed` | ProfitDistributor |
+| `QuestCreated` | QuestManager |
+| `QuestCompleted` | QuestManager |
 
 ---
 
-## 🛠 Development Commands
+## Tech Stack
 
-```bash
-npm run dev       # Start with ts-node (hot reload)
-npm run build     # Compile TypeScript to dist/
-npm start         # Run compiled output
-npm run clean     # Remove dist/
-```
-
----
-
-## 📊 Tech Stack
-
-- **Runtime:** Node.js 18+
-- **Language:** TypeScript 5.3
-- **Database:** SQLite (better-sqlite3) — decisions & executions
-- **WebSocket:** ws — real-time event broadcasting
-- **Blockchain:** ethers.js 6 — Base network integration
-- **Logging:** Custom reasoning logger with JSON persistence
-- **Architecture:** Modular agent loop with pluggable strategies
+- **Smart Contracts:** Solidity 0.8.24, OpenZeppelin v5, Hardhat v2.28.6
+- **Chain:** Monad Testnet (Chain ID 10143)
+- **Backend:** TypeScript 5.3, Node.js 18+
+- **Database:** SQLite (better-sqlite3)
+- **Real-time:** WebSocket (ws)
+- **Blockchain SDK:** ethers.js v6
 
 ---
 
-## 📄 License
+## License
 
 MIT
-
-Built by [Claw.Fund](https://github.com/karanmax999/Claw.Fund) 🦀
