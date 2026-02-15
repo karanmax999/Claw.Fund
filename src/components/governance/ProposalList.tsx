@@ -1,0 +1,251 @@
+'use client';
+
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { CheckCircle2, XCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useAccount } from 'wagmi';
+import { motion } from 'framer-motion';
+import { 
+    useProposalCount, 
+    useProposal, 
+    useVoteOnProposal, 
+    useCLAWBalance,
+    useHasVoted 
+} from '@/hooks/useContracts';
+import { CONTRACTS, GovernanceABI } from '@/lib/contracts';
+
+const MIN_VOTING_TOKENS = 100n * 10n ** 18n; // 100 CLAW tokens
+
+export function ProposalList() {
+    const { address } = useAccount();
+    const { data: proposalCount } = useProposalCount();
+    const { data: clawBalance } = useCLAWBalance(address);
+    const { writeContract, isPending } = useVoteOnProposal();
+    const [proposals, setProposals] = useState<any[]>([]);
+
+    // Fetch all proposals
+    useEffect(() => {
+        if (proposalCount) {
+            const count = Number(proposalCount);
+            const proposalPromises = [];
+            for (let i = 1; i <= count; i++) {
+                proposalPromises.push(i);
+            }
+            setProposals(proposalPromises);
+        }
+    }, [proposalCount]);
+
+    const canVote = clawBalance && typeof clawBalance === 'bigint' && clawBalance >= MIN_VOTING_TOKENS;
+
+    const handleVote = async (proposalId: bigint, support: boolean) => {
+        if (!canVote) {
+            alert(`You need at least ${Number(MIN_VOTING_TOKENS) / 1e18} CLAW tokens to vote`);
+            return;
+        }
+
+        try {
+            await writeContract({
+                address: CONTRACTS.Governance as `0x${string}`,
+                abi: GovernanceABI,
+                functionName: 'vote',
+                args: [proposalId, support],
+            });
+        } catch (error) {
+            console.error('Vote failed:', error);
+        }
+    };
+
+    if (!proposalCount || Number(proposalCount) === 0) {
+        return (
+            <Card className="p-8 text-center">
+                <p className="text-claw-dim font-mono text-sm">No proposals yet</p>
+            </Card>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            {!canVote && address && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                >
+                    <Card className="p-4 bg-yellow-500/10 border-yellow-500/30">
+                        <p className="text-yellow-500 text-sm font-mono">
+                            ⚠️ You need at least {Number(MIN_VOTING_TOKENS) / 1e18} CLAW tokens to vote. 
+                            Current balance: {clawBalance ? (Number(clawBalance) / 1e18).toFixed(2) : '0'} CLAW
+                        </p>
+                    </Card>
+                </motion.div>
+            )}
+
+            {proposals.map((proposalId, index) => (
+                <motion.div
+                    key={proposalId}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                >
+                    <ProposalCard
+                        proposalId={BigInt(proposalId)}
+                        onVote={handleVote}
+                        canVote={!!canVote}
+                        isPending={isPending}
+                        userAddress={address}
+                    />
+                </motion.div>
+            ))}
+        </div>
+    );
+}
+
+function ProposalCard({ 
+    proposalId, 
+    onVote, 
+    canVote, 
+    isPending,
+    userAddress 
+}: { 
+    proposalId: bigint; 
+    onVote: (id: bigint, support: boolean) => void;
+    canVote: boolean;
+    isPending: boolean;
+    userAddress?: `0x${string}`;
+}) {
+    const { data: proposal } = useProposal(proposalId);
+    const { data: hasVoted } = useHasVoted(proposalId, userAddress);
+
+    if (!proposal) {
+        return (
+            <Card className="p-4 animate-pulse">
+                <div className="h-20 bg-claw-subtle rounded" />
+            </Card>
+        );
+    }
+
+    // Type guard for proposal data
+    const proposalData = proposal as any;
+    const forVotes = proposalData?.forVotes ? Number(proposalData.forVotes) : 0;
+    const againstVotes = proposalData?.againstVotes ? Number(proposalData.againstVotes) : 0;
+    const endBlock = proposalData?.endBlock ? Number(proposalData.endBlock) : 0;
+    const executed = proposalData?.executed ?? false;
+    const description = proposalData?.description ?? `Proposal #${proposalId.toString()}`;
+
+    const totalVotes = forVotes + againstVotes;
+    const forPercent = totalVotes > 0 ? (forVotes / totalVotes) * 100 : 0;
+    const againstPercent = totalVotes > 0 ? (againstVotes / totalVotes) * 100 : 0;
+
+    // Determine status
+    const currentBlock = Date.now(); // Simplified - should use actual block number
+    const isActive = endBlock > currentBlock && !executed;
+    const status = executed ? 'EXECUTED' : 
+                   isActive ? 'ACTIVE' : 
+                   forPercent > againstPercent ? 'PASSED' : 'REJECTED';
+
+    return (
+        <motion.div
+            whileHover={{ scale: 1.01 }}
+            transition={{ type: "spring", stiffness: 300 }}
+        >
+            <Card className="relative overflow-hidden group">
+                <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono text-xs text-claw-dim">#{proposalId.toString()}</span>
+                            <Badge variant={status === 'ACTIVE' ? 'success' : 'default'}>
+                                {status}
+                            </Badge>
+                            {Boolean(hasVoted) && (
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ type: "spring", stiffness: 500 }}
+                                >
+                                    <Badge variant="outline" className="text-[10px]">
+                                        VOTED
+                                    </Badge>
+                                </motion.div>
+                            )}
+                        </div>
+                        <h3 className="text-lg font-bold text-white group-hover:text-claw-green transition-colors">
+                            Proposal #{proposalId.toString()}
+                        </h3>
+                        <p className="text-claw-dim text-sm max-w-2xl">
+                            {description}
+                        </p>
+                    </div>
+
+                    <div className="min-w-[200px] flex flex-col justify-center space-y-3">
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-xs font-mono">
+                                <span className="text-claw-green">FOR {forPercent.toFixed(1)}%</span>
+                                <span className="text-red-500">AGAINST {againstPercent.toFixed(1)}%</span>
+                            </div>
+                            <div className="h-2 bg-claw-subtle rounded-full overflow-hidden flex">
+                                <motion.div 
+                                    style={{ width: `${forPercent}%` }} 
+                                    className="bg-claw-green h-full"
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${forPercent}%` }}
+                                    transition={{ duration: 0.8, ease: "easeOut" }}
+                                />
+                                <motion.div 
+                                    style={{ width: `${againstPercent}%` }} 
+                                    className="bg-red-500 h-full"
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${againstPercent}%` }}
+                                    transition={{ duration: 0.8, ease: "easeOut" }}
+                                />
+                            </div>
+                            <div className="text-center text-[10px] text-claw-dim">
+                                {totalVotes.toLocaleString()} VOTES
+                            </div>
+                        </div>
+
+                        {status === 'ACTIVE' && !Boolean(hasVoted) && (
+                            <motion.div 
+                                className="flex gap-2"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.3 }}
+                            >
+                                <motion.div 
+                                    className="flex-1"
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                >
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        className="w-full hover:bg-claw-green/10 hover:text-claw-green hover:border-claw-green/30"
+                                        onClick={() => onVote(proposalId, true)}
+                                        disabled={!canVote || isPending}
+                                    >
+                                        <CheckCircle2 className="h-4 w-4 mr-1" /> FOR
+                                    </Button>
+                                </motion.div>
+                                <motion.div 
+                                    className="flex-1"
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                >
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        className="w-full hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30"
+                                        onClick={() => onVote(proposalId, false)}
+                                        disabled={!canVote || isPending}
+                                    >
+                                        <XCircle className="h-4 w-4 mr-1" /> AGAINST
+                                    </Button>
+                                </motion.div>
+                            </motion.div>
+                        )}
+                    </div>
+                </div>
+            </Card>
+        </motion.div>
+    );
+}
